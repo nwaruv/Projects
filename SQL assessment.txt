@@ -1,0 +1,79 @@
+--1.Top 5 Sales Agents by Approved Loan Amount
+SELECT A.agent_first_name, A.agent_last_name,
+	SUM(B.loan_amount) AS total_loan
+FROM sales_agent A
+INNER JOIN loan_sales B
+ON A.agent_id = B.agent_id
+WHERE B.status = 'Approved'
+GROUP BY A.agent_first_name, A.agent_last_name
+ORDER BY total_loan DESC
+LIMIT 5;
+
+--2.Loan Product Performance by Customer Demographics
+SELECT A.product_name, 
+	SUM(B.loan_amount) AS total_loan, C.gender,
+	C.employment_status
+FROM  loan_sales B
+INNER JOIN loan_product A
+ON A.product_id = B.product_id
+INNER JOIN customer_data C
+ON B.customer_id = C.customer_id
+GROUP BY A.product_name, C.gender, 
+C.employment_status;
+
+--3.Customers with Multiple Loan Products
+SELECT A.customer_id, A.first_name, A.last_name,
+	COUNT(DISTINCT(B.product_id)) AS count_of_distinct_products
+FROM customer_data A
+INNER JOIN loan_sales B
+ON A.customer_id = B.customer_id
+GROUP BY A.customer_id, A.first_name, A.last_name
+HAVING COUNT(DISTINCT(B.product_id)) > 1
+ORDER BY count_of_distinct_products DESC;
+
+--4.Loans with Outstanding Balance and Last Payment Date
+WITH loan_repayments AS (
+  SELECT 
+    A.loan_id, 
+    A.loan_amount, 
+    B.first_name AS customer_first_name,
+    B.last_name AS customer_last_name, 
+    MAX(C.payment_date) AS last_repayment_date,
+    MAX(
+      CASE 
+        WHEN C.payment_date = (
+          SELECT MAX(payment_date)
+          FROM repayment
+          WHERE loan_id = A.loan_id
+        ) THEN C.outstanding_balance 
+        ELSE NULL 
+      END) AS last_outstanding_balance
+  FROM loan_sales A
+  JOIN customer_data B
+    ON A.customer_id = B.customer_id
+  LEFT JOIN repayment C
+    ON A.loan_id = C.loan_id
+  WHERE A.status = 'Approved'
+  GROUP BY A.loan_id, A.loan_amount, B.first_name, B.last_name
+)
+SELECT loan_id, customer_first_name, 
+	customer_last_name, loan_amount, last_repayment_date
+FROM loan_repayments
+WHERE last_repayment_date IS NULL
+   OR last_outstanding_balance > 0
+ORDER BY last_repayment_date DESC;
+
+
+--5.Monthly Loan Approval Trends
+SELECT 
+    YEAR(approval_date) AS approval_year,
+    MONTH(approval_date) AS approval_month,
+    FORMAT(approval_date, 'MMM yyyy') AS approval_month_year,
+    SUM(loan_amount) AS total_loan_amount,
+    COUNT(*) AS number_of_approved_loans
+FROM loan_sales
+WHERE status = 'Approved'
+    AND YEAR(approval_date) IN (2023, 2024)
+GROUP BY YEAR(approval_date), MONTH(approval_date),
+	FORMAT(approval_date, 'MMM yyyy')
+ORDER BY approval_year, approval_month;
